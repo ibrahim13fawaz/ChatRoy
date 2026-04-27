@@ -1,0 +1,84 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "usernames": {
+      "$username": {
+        ".read": "auth != null",
+        ".write": "auth != null && (
+          !data.exists() ||
+          data.val() === auth.uid
+        )"
+      }
+    },
+
+    "users": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid",
+        "email": { ".read": "auth != null && auth.uid === $uid" },
+        "online": { ".write": "auth != null && auth.uid === $uid" },
+        "lastSeen": { ".write": "auth != null && auth.uid === $uid" }
+      }
+    },
+
+    "rooms": {
+      ".read": "auth != null",
+      "$roomId": {
+        ".write": "auth != null",
+        "bannedUsers": {
+          "$uid": {
+            ".write": "auth != null && (
+              root.child('rooms').child($roomId).child('ownerId').val() === auth.uid ||
+              root.child('rooms').child($roomId).child('admins').child(auth.uid).exists()
+            )"
+          }
+        },
+        "admins": {
+          "$uid": {
+            ".write": "auth != null &&
+              root.child('rooms').child($roomId).child('ownerId').val() === auth.uid"
+          }
+        },
+        "usersOnline": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && (
+              !root.child('rooms').child($roomId).child('bannedUsers').child(auth.uid).exists()
+            )"
+          }
+        }
+      }
+    },
+
+    "messages": {
+      "$roomId": {
+        ".read": "auth != null && !root.child('rooms').child($roomId).child('bannedUsers').child(auth.uid).exists()",
+        "$messageId": {
+          ".write": "auth != null && (
+            !data.exists() ||
+            data.child('senderId').val() === auth.uid ||
+            root.child('rooms').child($roomId).child('ownerId').val() === auth.uid ||
+            root.child('rooms').child($roomId).child('admins').child(auth.uid).exists()
+          )"
+        }
+      }
+    },
+
+    "privateChats": {
+      "$chatId": {
+        ".read": "auth != null && $chatId.contains(auth.uid)",
+        ".write": "auth != null && $chatId.contains(auth.uid)"
+      }
+    },
+
+    "typing": {
+      "$chatId": {
+        ".read": "auth != null && $chatId.contains(auth.uid)",
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid"
+        }
+      }
+    }
+  }
+}
