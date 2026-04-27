@@ -293,6 +293,7 @@ const EMOJI_LIST = [
 
 /* ── Toast ── */
 function showToast(msg) {
+  // uses #app-toast from HTML
   let t = document.getElementById('app-toast');
   if (!t) {
     t = document.createElement('div');
