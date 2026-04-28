@@ -17,7 +17,7 @@ const firebaseConfig = {
 
 // Admin UIDs — أضف UIDs الأدمن هنا بعد التسجيل
 const ADMIN_UIDS = [
-  // "paste_uid_here",
+QcvJsSe4IOOLRviCv8XlLqT5h2z2
 ];
 
 // ════════════════════════════════════════
