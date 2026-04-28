@@ -63,7 +63,11 @@ html, body {
    SCREENS & ROUTING
 ══════════════════════════════════════ */
 .screen {
-  position: fixed; inset: 0;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
   display: none;
   flex-direction: column;
   overflow: hidden;
@@ -365,6 +369,9 @@ html, body {
 #screen-room {
   background: var(--bg-primary);
   flex-direction: column;
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 .chat-header {
@@ -389,8 +396,16 @@ html, body {
 .chat-header .room-info-sm .ronline { font-size: 12px; color: var(--online); }
 
 .chat-messages {
-  flex: 1; overflow-y: auto; padding: 12px;
-  display: flex; flex-direction: column; gap: 8px;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* رسائل تبدأ من الأسفل */
+  justify-content: flex-start;
+  min-height: 0;
 }
 
 /* System messages */
@@ -457,12 +472,18 @@ html, body {
   background: linear-gradient(135deg, rgba(255,208,64,0.08), rgba(255,130,0,0.05));
 }
 
-/* Chat input */
+/* Chat input — ثابت في الأسفل دائماً */
 .chat-input-area {
   padding: 10px 12px;
-  background: var(--bg-secondary); border-top: 1px solid var(--border);
-  display: flex; align-items: center; gap: 8px;
-  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
 }
 
 .emoji-btn {
@@ -687,6 +708,9 @@ html, body {
 #screen-private {
   background: var(--bg-primary);
   flex-direction: column;
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 /* ══════════════════════════════════════
@@ -847,4 +871,106 @@ html, body {
 @media (max-width: 480px) {
   .emoji-picker { grid-template-columns: repeat(7,1fr); }
   .badges-grid { grid-template-columns: repeat(4,1fr); }
+}
+
+/* ── Auth Error — wider for diagnostic messages ── */
+.auth-error {
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+  padding: 12px 14px !important;
+  text-align: right !important;
+}
+.auth-error.show { display: block !important; }
+
+/* ── Firebase banner ── */
+#fb-banner + * { margin-top: 50px; }
+
+/* ══════════════════════════════════════
+   iOS KEYBOARD & CHAT LAYOUT FIX
+══════════════════════════════════════ */
+
+/* منع iOS Safari من تغيير حجم الصفحة عند فتح الكيبورد */
+html {
+  height: -webkit-fill-available;
+}
+body {
+  min-height: -webkit-fill-available;
+}
+
+/* شاشات الدردشة — الهيكل الصحيح */
+#screen-room,
+#screen-private {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  position: fixed;
+  inset: 0;
+}
+
+/* منطقة الرسائل — تملأ المساحة المتبقية وتسكرول للأعلى */
+#screen-room .chat-messages,
+#screen-private .chat-messages,
+#screen-private #private-messages {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* منطقة الكتابة — ثابتة في الأسفل دائماً */
+#screen-room .chat-input-area,
+#screen-private .chat-input-area {
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 20;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* الهيدر ثابت في الأعلى */
+#screen-room .chat-header,
+#screen-private .chat-header {
+  flex: 0 0 auto;
+  flex-shrink: 0;
+}
+
+/* Typing indicator ثابت فوق الإدخال */
+#typing-indicator {
+  flex: 0 0 auto;
+  flex-shrink: 0;
+}
+
+/* إصلاح الـ emoji picker ليظهر فوق منطقة الكتابة */
+.emoji-picker {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 4px;
+  z-index: 50;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  box-shadow: var(--shadow-card);
 }
