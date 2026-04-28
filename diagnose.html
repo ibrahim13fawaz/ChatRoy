@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>ChatVibe — تشخيص Firebase</title>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#0E0E1A;color:#F0EEFF;font-family:Cairo,sans-serif;padding:20px;direction:rtl}
+    h1{font-size:20px;margin-bottom:20px;color:#9E6FFF}
+    .card{background:#1E1E34;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:16px;margin-bottom:14px}
+    .row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+    .row:last-child{border-bottom:none}
+    .lbl{font-size:13px;color:#9090C0}
+    .val{font-size:13px;font-weight:600}
+    .ok{color:#00E676}.err{color:#FF4060}.warn{color:#FFD040}
+    .btn{width:100%;padding:13px;background:linear-gradient(135deg,#7C4DFF,#A040FF);border:none;border-radius:10px;color:#fff;font-family:Cairo,sans-serif;font-size:15px;font-weight:700;cursor:pointer;margin-top:10px}
+    input{width:100%;padding:12px 14px;background:#252540;border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#fff;font-family:Cairo,sans-serif;font-size:14px;margin-bottom:10px;direction:ltr}
+    .log{background:#0A0A18;border-radius:8px;padding:12px;font-size:12px;font-family:monospace;margin-top:10px;max-height:200px;overflow-y:auto;line-height:1.8;direction:ltr}
+    .log .ok{color:#00E676}.log .err{color:#FF6060}.log .info{color:#9090C0}
+  </style>
+</head>
+<body>
+<h1>🔧 تشخيص Firebase — ChatVibe</h1>
+
+<div class="card">
+  <div class="row"><span class="lbl">اتصال الإنترنت</span><span class="val" id="chk-net">...</span></div>
+  <div class="row"><span class="lbl">تحميل Firebase SDK</span><span class="val" id="chk-sdk">...</span></div>
+  <div class="row"><span class="lbl">إعداد firebase-config.js</span><span class="val" id="chk-cfg">...</span></div>
+  <div class="row"><span class="lbl">تهيئة Firebase App</span><span class="val" id="chk-app">...</span></div>
+  <div class="row"><span class="lbl">Firebase Auth</span><span class="val" id="chk-auth">...</span></div>
+  <div class="row"><span class="lbl">Realtime Database</span><span class="val" id="chk-db">...</span></div>
+  <div class="row"><span class="lbl">Email/Password مفعّل</span><span class="val" id="chk-email">...</span></div>
+  <div class="row"><span class="lbl">النطاق الحالي</span><span class="val" id="chk-domain" style="font-size:11px;direction:ltr"></span></div>
+</div>
+
+<div class="card">
+  <div style="font-size:14px;font-weight:700;margin-bottom:12px">🧪 اختبار تسجيل تجريبي</div>
+  <input type="email" id="test-email" placeholder="test@example.com" value="test@chatvibe.com"/>
+  <input type="password" id="test-pass" placeholder="123456" value="test123456"/>
+  <button class="btn" id="btn-test-reg">اختبار إنشاء حساب</button>
+  <button class="btn" id="btn-test-login" style="background:#252540;margin-top:6px;border:1px solid rgba(255,255,255,.1)">اختبار تسجيل الدخول</button>
+  <div class="log" id="log">انتظر النتائج...<br/></div>
+</div>
+
+<div class="card">
+  <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:#FFD040">📋 خطوات الإصلاح الشائعة</div>
+  <div style="font-size:12px;color:#9090C0;line-height:2">
+    1. Firebase Console → Authentication → Sign-in method → <b style="color:#fff">Email/Password → Enable</b><br/>
+    2. Firebase Console → Authentication → Settings → Authorized Domains → <b style="color:#fff">أضف نطاقك</b><br/>
+    3. Firebase Console → Realtime Database → <b style="color:#fff">إنشاء قاعدة بيانات</b><br/>
+    4. تأكد من نسخ <b style="color:#fff">databaseURL</b> الصحيح في firebase-config.js<br/>
+    5. إذا استخدمت GitHub Pages: أضف <b style="color:#fff">username.github.io</b> في Authorized Domains
+  </div>
+</div>
+
+<script src="firebase-config.js"></script>
+<script>
+function log(msg, type='info') {
+  const el = document.getElementById('log');
+  const span = document.createElement('span');
+  span.className = type;
+  span.textContent = '› ' + msg + '\n';
+  el.appendChild(span);
+  el.scrollTop = el.scrollHeight;
+}
+function setChk(id, ok, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className = 'val ' + (ok === true ? 'ok' : ok === false ? 'err' : 'warn');
+}
+
+// 1. Internet
+setChk('chk-net', navigator.onLine, navigator.onLine ? '✓ متصل' : '✗ غير متصل');
+
+// 2. SDK
+const sdkOk = typeof firebase !== 'undefined' && typeof firebase.auth === 'function';
+setChk('chk-sdk', sdkOk, sdkOk ? '✓ محمّل' : '✗ فشل التحميل');
+
+// 3. Config
+const cfg = typeof firebaseConfig !== 'undefined' ? firebaseConfig : null;
+const cfgOk = cfg && cfg.apiKey && !cfg.apiKey.startsWith('YOUR_');
+setChk('chk-cfg', cfgOk, cfgOk ? '✓ مضبوط' : '✗ لم يتم الإعداد — عدّل firebase-config.js');
+
+// 4. App init
+const appOk = typeof FIREBASE_READY !== 'undefined' && FIREBASE_READY;
+setChk('chk-app', appOk, appOk ? '✓ مهيّأ' : '✗ فشل التهيئة');
+
+// 5. Auth
+const authOk = typeof auth !== 'undefined' && auth !== null;
+setChk('chk-auth', authOk, authOk ? '✓ جاهز' : '✗ غير جاهز');
+
+// 6. DB
+const dbOk = typeof db !== 'undefined' && db !== null;
+setChk('chk-db', dbOk, dbOk ? '✓ جاهز' : '✗ غير جاهز');
+
+// 7. Domain
+document.getElementById('chk-domain').textContent = location.hostname;
+
+// 8. Test Email/Password sign-in method
+if (authOk) {
+  // Try a dummy sign-in to see if method is enabled
+  auth.signInWithEmailAndPassword('__probe__@probe.invalid', 'probe123')
+    .catch(e => {
+      if (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential' || e.code === 'auth/invalid-email') {
+        setChk('chk-email', true, '✓ مفعّل');
+        log('Email/Password sign-in method is enabled ✓', 'ok');
+      } else if (e.code === 'auth/operation-not-allowed') {
+        setChk('chk-email', false, '✗ غير مفعّل — فعّله من Firebase Console');
+        log('ERROR: Email/Password NOT enabled in Firebase Console!', 'err');
+        log('Go to: Firebase Console → Authentication → Sign-in method → Email/Password → Enable', 'err');
+      } else if (e.code === 'auth/network-request-failed') {
+        setChk('chk-email', null, '⚠ خطأ شبكة');
+        log('Network error — check internet connection', 'err');
+      } else if (e.code === 'auth/configuration-not-found') {
+        setChk('chk-email', false, '✗ إعداد Firebase غير صحيح');
+        log('Firebase config error: ' + e.code, 'err');
+      } else if (e.code === 'auth/app-not-authorized' || e.code === 'auth/unauthorized-domain') {
+        setChk('chk-email', false, '✗ النطاق غير مصرح به');
+        log('DOMAIN NOT AUTHORIZED: Add "' + location.hostname + '" to Firebase Authorized Domains', 'err');
+      } else {
+        setChk('chk-email', null, '⚠ ' + e.code);
+        log('Unexpected: ' + e.code + ' — ' + e.message, 'err');
+      }
+    });
+} else {
+  setChk('chk-email', false, '✗ Firebase غير جاهز');
+}
+
+// Buttons
+document.getElementById('btn-test-reg').onclick = async () => {
+  const email = document.getElementById('test-email').value.trim();
+  const pass  = document.getElementById('test-pass').value;
+  log('Trying createUserWithEmailAndPassword(' + email + ')...');
+  try {
+    const cred = await auth.createUserWithEmailAndPassword(email, pass);
+    log('SUCCESS! UID: ' + cred.user.uid, 'ok');
+    log('تم إنشاء الحساب بنجاح ✓', 'ok');
+    await auth.signOut();
+  } catch(e) {
+    log('FAILED: ' + e.code, 'err');
+    log('Message: ' + e.message, 'err');
+    if (e.code === 'auth/operation-not-allowed')
+      log('→ فعّل Email/Password في Firebase Console', 'err');
+    else if (e.code === 'auth/email-already-in-use')
+      log('→ هذا الإيميل موجود مسبقاً (جيد! الطريقة تعمل)', 'ok');
+    else if (e.code === 'auth/unauthorized-domain')
+      log('→ أضف "' + location.hostname + '" في Firebase → Authentication → Authorized Domains', 'err');
+  }
+};
+
+document.getElementById('btn-test-login').onclick = async () => {
+  const email = document.getElementById('test-email').value.trim();
+  const pass  = document.getElementById('test-pass').value;
+  log('Trying signInWithEmailAndPassword(' + email + ')...');
+  try {
+    const cred = await auth.signInWithEmailAndPassword(email, pass);
+    log('SUCCESS! UID: ' + cred.user.uid, 'ok');
+    await auth.signOut();
+  } catch(e) {
+    log('FAILED: ' + e.code, 'err');
+    log('Message: ' + e.message, 'err');
+  }
+};
+</script>
+</body>
+</html>
