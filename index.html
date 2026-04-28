@@ -229,7 +229,7 @@
 <!-- ════════════════════════════════
      ROOM CHAT SCREEN
 ════════════════════════════════ -->
-<div id="screen-room" class="screen" style="position:relative;overflow:hidden">
+<div id="screen-room" class="screen">
   <div class="chat-header">
     <button class="back-btn" id="btn-room-back">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
@@ -244,8 +244,8 @@
     </button>
   </div>
   <div class="chat-messages" id="chat-messages"></div>
-  <div id="emoji-picker-room" class="emoji-picker hidden"></div>
   <div class="chat-input-area">
+  <div id="emoji-picker-room" class="emoji-picker hidden" style="position:absolute;bottom:70px;left:0;right:0;z-index:50">
     <button class="emoji-btn" id="btn-emoji-room">😊</button>
     <textarea class="chat-input" id="room-chat-input" placeholder="اكتب رسالة..." rows="1"></textarea>
     <button class="send-btn" id="btn-send-room">
@@ -258,7 +258,7 @@
 <!-- ════════════════════════════════
      PRIVATE CHAT SCREEN
 ════════════════════════════════ -->
-<div id="screen-private" class="screen" style="position:relative;overflow:hidden">
+<div id="screen-private" class="screen">
   <div class="chat-header">
     <button class="back-btn" id="btn-private-back">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
@@ -274,8 +274,8 @@
     <div class="typing-dots"><span></span><span></span><span></span></div>
     يكتب...
   </div>
-  <div id="emoji-picker-private" class="emoji-picker hidden"></div>
   <div class="chat-input-area">
+  <div id="emoji-picker-private" class="emoji-picker hidden" style="position:absolute;bottom:70px;left:0;right:0;z-index:50">
     <button class="emoji-btn" id="btn-emoji-private">😊</button>
     <textarea class="chat-input" id="private-chat-input" placeholder="اكتب رسالة..." rows="1"></textarea>
     <button class="send-btn" id="btn-send-private">
