@@ -1,10 +1,3 @@
-console.log("🔥 JS شغال");
-
-try {
-  console.log(firebase.app());
-} catch (e) {
-  console.error("❌ Firebase مو شغال:", e);
-}
 // ═══════════════════════════════════════
 //  AUTH.JS — Authentication System
 // ═══════════════════════════════════════
