@@ -1,342 +1,292 @@
 // ═══════════════════════════════════════
-//  CHAT.JS — Room & Private Chat
+//  CHAT.JS — Room + Private Chat
 // ═══════════════════════════════════════
 
 const ChatModule = (() => {
+  let _currentUser     = null;
+  let _userData        = null;
+  let _roomId          = null;
+  let _roomData        = null;
+  let _chatId          = null;
+  let _peerUid         = null;
+  let _peerData        = null;
+  let _msgListener     = null;
+  let _memberListener  = null;
+  let _typingListener  = null;
+  let _onlineRef       = null;
 
-  let _currentUser = null;
-  let _userData    = null;
-  let _currentRoom = null;
-  let _currentRoomData = null;
-  let _privatePeer = null;
-  let _privatePeerData = null;
-  let _chatId = null;
-
-  let _msgsListener = null;
-  let _membersListener = null;
-  let _typingListener = null;
-  let _emojiOpen = false;
-
-  /* ── Init ── */
   function init(user, userData) {
     _currentUser = user;
     _userData    = userData;
+  }
+
+  function _scrollToBottom(el) {
+    if (!el) return;
+    // requestAnimationFrame ensures DOM is painted before scroll
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
   }
 
   /* ══════════════════════════════
      ROOM CHAT
   ══════════════════════════════ */
   async function openRoom(roomId, roomData) {
-    // Check ban
-    const canEnter = await RoomsModule.canEnterRoom(roomId, _currentUser.uid);
-    if (!canEnter) return showToast('🚫 أنت محظور من هذه الغرفة');
+    const ok = await RoomsModule.canEnterRoom(roomId, _currentUser.uid);
+    if (!ok) return showToast('🚫 أنت محظور من هذه الغرفة');
 
-    _currentRoom = roomId;
-    _currentRoomData = roomData;
-    _cleanup();
+    _cleanupRoom();
+    _roomId   = roomId;
+    _roomData = roomData;
 
     showScreen('screen-room');
 
     // Header
-    document.getElementById('room-header-name').textContent = roomData.name;
-    document.getElementById('room-header-avi').textContent = roomData.avatar || '🏠';
+    const hAvi = document.getElementById('room-header-avi');
+    const hName = document.getElementById('room-header-name');
+    if (hAvi)  hAvi.textContent  = roomData.avatar || '🏠';
+    if (hName) hName.textContent = roomData.name   || 'غرفة';
 
-    // Mark user online in room
-    const onlineRef = db.ref(`rooms/${roomId}/usersOnline/${_currentUser.uid}`);
-    onlineRef.set(true);
-    onlineRef.onDisconnect().remove();
-    db.ref(`rooms/${roomId}/usersOnline`).on('value', snap => {
-      document.getElementById('room-online-count').textContent =
-        (Object.keys(snap.val() || {}).length) + ' متواجد';
+    // Online counter
+    _onlineRef = db.ref('rooms/' + roomId + '/usersOnline/' + _currentUser.uid);
+    _onlineRef.set(true);
+    _onlineRef.onDisconnect().remove();
+    db.ref('rooms/' + roomId + '/usersOnline').on('value', snap => {
+      const cnt = Object.keys(snap.val() || {}).length;
+      const el = document.getElementById('room-online-count');
+      if (el) el.textContent = cnt + ' متواجد';
     });
 
-    // Send join notification
-    const adminFlag = isAdmin(_currentUser.uid);
-    const myRole = _getMyRole(roomId, roomData);
-    _sendSystemMsg(roomId,
-      adminFlag || myRole === 'admin' || myRole === 'owner'
-        ? { text: `🔥 دخول أسطوري: ${_userData.username}`, legendary: true }
-        : { text: `🚪 دخل: ${_userData.username}`, legendary: false }
+    // Join message
+    const adminUser = isAdmin(_currentUser.uid);
+    const role = _getRole(roomId, roomData);
+    _sendSysMsg(roomId,
+      (adminUser || role === 'admin' || role === 'owner')
+        ? { text: '🔥 دخول أسطوري: ' + _userData.username, legendary: true }
+        : { text: '🚪 دخل: ' + _userData.username, legendary: false }
     );
 
-    // Load messages
-    _listenRoomMessages(roomId);
+    _listenRoomMsgs(roomId);
+    _listenMembers(roomId, roomData);
+    _buildRoomInput(roomId);
 
-    // Members panel
-    _listenRoomMembers(roomId, roomData);
-
-    // Input
-    _bindRoomInput(roomId);
-
-    // Back button
+    // Back
     document.getElementById('btn-room-back').onclick = () => {
-      onlineRef.remove();
-      _cleanup();
+      _cleanupRoom();
       showScreen('screen-app');
     };
 
-    // Members toggle
+    // Members panel toggle
     document.getElementById('btn-room-members').onclick = () => {
       document.getElementById('members-panel').classList.toggle('open');
     };
   }
 
-  function _sendSystemMsg(roomId, { text, legendary }) {
-    db.ref(`messages/${roomId}`).push({
-      type: 'system',
-      text,
-      legendary: !!legendary,
+  function _sendSysMsg(roomId, { text, legendary }) {
+    db.ref('messages/' + roomId).push({
+      type: 'system', text, legendary: !!legendary,
       timestamp: firebase.database.ServerValue.TIMESTAMP,
     });
   }
 
-  function _listenRoomMessages(roomId) {
+  function _listenRoomMsgs(roomId) {
     const msgsEl = document.getElementById('chat-messages');
+    if (!msgsEl) return;
     msgsEl.innerHTML = '';
-
-    const ref = db.ref(`messages/${roomId}`).orderByChild('timestamp').limitToLast(100);
-    _msgsListener = ref.on('child_added', snap => {
-      const msg = snap.val();
-      if (!msg) return;
-      const el = _buildMessage(snap.key, msg, roomId);
-      msgsEl.appendChild(el);
-      msgsEl.scrollTop = msgsEl.scrollHeight;
+    const ref = db.ref('messages/' + roomId).orderByChild('timestamp').limitToLast(100);
+    _msgListener = ref.on('child_added', snap => {
+      const msg = snap.val(); if (!msg) return;
+      msgsEl.appendChild(_buildBubble(snap.key, msg, roomId));
+      _scrollToBottom(msgsEl);
     });
   }
 
-  function _buildMessage(msgId, msg, roomId) {
+  function _buildBubble(msgId, msg, roomId) {
     if (msg.type === 'system') {
-      const div = document.createElement('div');
-      div.className = 'sys-msg' + (msg.legendary ? ' legendary' : '');
-      div.textContent = msg.text;
-      return div;
+      const d = document.createElement('div');
+      d.className = 'sys-msg' + (msg.legendary ? ' legendary' : '');
+      d.textContent = msg.text; return d;
     }
-
-    const isOwn = msg.senderId === _currentUser.uid;
-    const adminSender = isAdmin(msg.senderId);
-    const row = document.createElement('div');
-    row.className = 'msg-row' + (isOwn ? ' own' : '') + (adminSender ? ' is-admin' : '');
+    const isOwn   = msg.senderId === _currentUser.uid;
+    const isAdm   = isAdmin(msg.senderId);
+    const row     = document.createElement('div');
+    row.className = 'msg-row' + (isOwn ? ' own' : '') + (isAdm ? ' is-admin' : '');
     row.dataset.msgId = msgId;
 
     const avi = document.createElement('div');
     avi.className = 'msg-avatar';
     avi.textContent = msg.senderAvatar || '👤';
-    avi.addEventListener('click', () => ProfileModule.viewUserProfile(msg.senderId, _currentUser.uid));
+    avi.onclick = () => ProfileModule.viewUserProfile(msg.senderId, _currentUser.uid);
 
     const content = document.createElement('div');
     content.className = 'msg-content';
-    content.innerHTML = `
-      <div class="msg-sender ${adminSender ? 'admin-name' : ''}">${sanitize(msg.senderName || '')}</div>
-      <div class="msg-bubble">${sanitize(msg.text)}</div>
-      <div class="msg-time">${formatTime(msg.timestamp)}</div>`;
+    content.innerHTML =
+      '<div class="msg-sender ' + (isAdm ? 'admin-name' : '') + '">' + sanitize(msg.senderName || '') + '</div>' +
+      '<div class="msg-bubble">' + sanitize(msg.text) + '</div>' +
+      '<div class="msg-time">' + formatTime(msg.timestamp) + '</div>';
 
-    // Long press / right-click context menu
+    // Long press context menu
     const bubble = content.querySelector('.msg-bubble');
-    bubble.addEventListener('contextmenu', e => {
-      e.preventDefault();
-      _showCtxMenu(e, msgId, msg, roomId);
-    });
-    let longPress;
-    bubble.addEventListener('touchstart', () => {
-      longPress = setTimeout(() => _showCtxMenu(null, msgId, msg, roomId), 600);
-    });
-    bubble.addEventListener('touchend', () => clearTimeout(longPress));
+    let longPressTimer;
+    bubble.addEventListener('touchstart',  () => { longPressTimer = setTimeout(() => _ctxMenu(msgId, msg, roomId), 600); });
+    bubble.addEventListener('touchend',    () => clearTimeout(longPressTimer));
+    bubble.addEventListener('touchmove',   () => clearTimeout(longPressTimer));
+    bubble.addEventListener('contextmenu', e  => { e.preventDefault(); _ctxMenu(msgId, msg, roomId); });
 
     row.appendChild(isOwn ? content : avi);
     row.appendChild(isOwn ? avi : content);
     return row;
   }
 
-  /* ── Context menu ── */
-  function _showCtxMenu(e, msgId, msg, roomId) {
-    _removeCtxMenu();
+  /* ── Context Menu ── */
+  function _ctxMenu(msgId, msg, roomId) {
+    document.getElementById('ctx-menu')?.remove();
+    const role   = _getRole(roomId, _roomData);
+    const canDel = msg.senderId === _currentUser.uid || role !== 'member' || isAdmin(_currentUser.uid);
+    const canMod = (role === 'owner' || role === 'admin' || isAdmin(_currentUser.uid)) && msg.senderId !== _currentUser.uid;
+
     const menu = document.createElement('div');
-    menu.className = 'ctx-menu';
-    menu.id = 'ctx-menu';
+    menu.id = 'ctx-menu'; menu.className = 'ctx-menu';
+    menu.style.cssText = 'position:fixed;bottom:80px;right:12px;left:12px;z-index:300';
 
-    const myRole = _getMyRole(roomId, _currentRoomData);
-    const canDelete = msg.senderId === _currentUser.uid || myRole !== 'member' || isAdmin(_currentUser.uid);
-    const canBan = (myRole === 'owner' || myRole === 'admin' || isAdmin(_currentUser.uid))
-                    && msg.senderId !== _currentUser.uid;
-
-    if (canDelete) {
-      const del = document.createElement('div');
-      del.className = 'ctx-item danger';
-      del.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg> حذف الرسالة`;
-      del.onclick = async () => {
-        await db.ref(`messages/${roomId}/${msgId}`).remove();
-        _removeCtxMenu();
-      };
-      menu.appendChild(del);
+    if (canDel) {
+      const d = document.createElement('div');
+      d.className = 'ctx-item danger';
+      d.innerHTML = '🗑 حذف الرسالة';
+      d.onclick = async () => { await db.ref('messages/' + roomId + '/' + msgId).remove(); menu.remove(); };
+      menu.appendChild(d);
     }
+    if (canMod && msg.senderId) {
+      const k = document.createElement('div'); k.className = 'ctx-item';
+      k.innerHTML = '🚪 طرد';
+      k.onclick = async () => { await RoomsModule.kickUser(roomId, msg.senderId); menu.remove(); };
 
-    if (canBan && msg.senderId) {
-      const kick = document.createElement('div');
-      kick.className = 'ctx-item';
-      kick.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg> طرد`;
-      kick.onclick = async () => {
-        await RoomsModule.kickUser(roomId, msg.senderId);
-        _removeCtxMenu();
-      };
-      const ban = document.createElement('div');
-      ban.className = 'ctx-item danger';
-      ban.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> حظر`;
-      ban.onclick = async () => {
-        await RoomsModule.banUser(roomId, msg.senderId);
-        _removeCtxMenu();
-      };
-      menu.appendChild(kick);
-      menu.appendChild(ban);
+      const b = document.createElement('div'); b.className = 'ctx-item danger';
+      b.innerHTML = '🚫 حظر';
+      b.onclick = async () => { await RoomsModule.banUser(roomId, msg.senderId); menu.remove(); };
 
-      // Assign admin (owner only)
-      if (myRole === 'owner' || isAdmin(_currentUser.uid)) {
-        const adminBtn = document.createElement('div');
-        adminBtn.className = 'ctx-item';
-        adminBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> تعيين أدمن`;
-        adminBtn.onclick = async () => {
-          await RoomsModule.assignAdmin(roomId, msg.senderId);
-          _removeCtxMenu();
-        };
-        menu.appendChild(adminBtn);
+      menu.appendChild(k); menu.appendChild(b);
+
+      if (role === 'owner' || isAdmin(_currentUser.uid)) {
+        const a = document.createElement('div'); a.className = 'ctx-item';
+        a.innerHTML = '🛡 تعيين أدمن';
+        a.onclick = async () => { await RoomsModule.assignAdmin(roomId, msg.senderId); menu.remove(); };
+        menu.appendChild(a);
       }
     }
-
     if (!menu.children.length) return;
-
-    if (e) {
-      menu.style.position = 'fixed';
-      menu.style.top = Math.min(e.clientY, window.innerHeight - 200) + 'px';
-      menu.style.right = '12px';
-    } else {
-      menu.style.position = 'fixed';
-      menu.style.top = '50%';
-      menu.style.right = '12px';
-    }
-
     document.body.appendChild(menu);
-    setTimeout(() => document.addEventListener('click', _removeCtxMenu, { once: true }), 100);
+    setTimeout(() => document.addEventListener('click', () => menu.remove(), { once: true }), 100);
   }
 
-  function _removeCtxMenu() {
-    const m = document.getElementById('ctx-menu');
-    if (m) m.remove();
-  }
-
-  /* ── Room Members ── */
-  function _listenRoomMembers(roomId, roomData) {
+  /* ── Members Panel ── */
+  function _listenMembers(roomId, roomData) {
     const panel = document.getElementById('members-panel');
-    panel.innerHTML = '<div style="font-size:13px;font-weight:700;color:var(--text-secondary);margin-bottom:8px;">المتواجدون</div>';
-
-    const ref = db.ref(`rooms/${roomId}/usersOnline`);
-    _membersListener = ref.on('value', async snap => {
-      panel.innerHTML = '<div style="font-size:13px;font-weight:700;color:var(--text-secondary);margin-bottom:8px;">المتواجدون</div>';
-      const uids = Object.keys(snap.val() || {});
-      for (const uid of uids) {
-        const uSnap = await db.ref(`users/${uid}`).once('value');
-        const u = uSnap.val();
-        if (!u) continue;
-        const role = uid === roomData.ownerId ? 'owner'
-                   : (roomData.admins && roomData.admins[uid]) ? 'admin' : 'member';
-        const row = document.createElement('div');
-        row.className = 'member-row';
-        row.innerHTML = `
-          <div class="member-avi">${sanitize(u.avatar||'👤')}</div>
-          <div class="member-name">${sanitize(u.username)}</div>
-          <div class="member-role ${role}">${role === 'owner' ? '👑' : role === 'admin' ? '🛡' : ''}</div>`;
-        row.addEventListener('click', () => ProfileModule.viewUserProfile(uid, _currentUser.uid));
-        panel.appendChild(row);
+    if (!panel) return;
+    panel.innerHTML = '<div style="font-size:13px;font-weight:700;color:var(--text-secondary);margin-bottom:8px">المتواجدون</div>';
+    _memberListener = db.ref('rooms/' + roomId + '/usersOnline').on('value', async snap => {
+      panel.innerHTML = '<div style="font-size:13px;font-weight:700;color:var(--text-secondary);margin-bottom:8px">المتواجدون</div>';
+      for (const uid of Object.keys(snap.val() || {})) {
+        try {
+          const uSnap = await db.ref('users/' + uid).once('value');
+          const u = uSnap.val(); if (!u) continue;
+          const role = uid === roomData.ownerId ? 'owner'
+                     : (roomData.admins && roomData.admins[uid]) ? 'admin' : 'member';
+          const row = document.createElement('div');
+          row.className = 'member-row';
+          row.innerHTML =
+            '<div class="member-avi">' + sanitize(u.avatar || '👤') + '</div>' +
+            '<div class="member-name">' + sanitize(u.username || '') + '</div>' +
+            '<div class="member-role ' + role + '">' +
+              (role === 'owner' ? '👑' : role === 'admin' ? '🛡' : '') +
+            '</div>';
+          row.onclick = () => ProfileModule.viewUserProfile(uid, _currentUser.uid);
+          panel.appendChild(row);
+        } catch(e) {}
       }
     });
   }
 
-  /* ── Send room message ── */
-  function _bindRoomInput(roomId) {
-    const input = document.getElementById('room-chat-input');
+  /* ── Room Input ── */
+  function _buildRoomInput(roomId) {
+    const input   = document.getElementById('room-chat-input');
     const sendBtn = document.getElementById('btn-send-room');
-    const emojiBtn = document.getElementById('btn-emoji-room');
-    const picker = document.getElementById('emoji-picker-room');
+    const emjBtn  = document.getElementById('btn-emoji-room');
+    const picker  = document.getElementById('emoji-picker-room');
+    if (!input || !sendBtn) return;
 
     sendBtn.onclick = () => _sendRoomMsg(roomId, input);
     input.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _sendRoomMsg(roomId, input); } };
 
-    emojiBtn.onclick = (e) => {
-      e.stopPropagation();
-      _emojiOpen = !_emojiOpen;
-      picker.classList.toggle('hidden', !_emojiOpen);
-    };
-
-    // Build emoji picker
+    // Emoji picker
     picker.innerHTML = '';
     EMOJI_LIST.forEach(em => {
-      const span = document.createElement('span');
-      span.textContent = em;
-      span.onclick = () => { input.value += em; input.focus(); };
-      picker.appendChild(span);
+      const s = document.createElement('span');
+      s.textContent = em;
+      s.onclick = () => { input.value += em; input.focus(); };
+      picker.appendChild(s);
     });
-
-    document.addEventListener('click', () => {
-      _emojiOpen = false;
-      picker.classList.add('hidden');
-    });
+    emjBtn.onclick = e => { e.stopPropagation(); picker.classList.toggle('hidden'); };
+    document.addEventListener('click', () => picker.classList.add('hidden'));
   }
 
   async function _sendRoomMsg(roomId, input) {
-    const text = input.value.trim();
+    const text = (input.value || '').trim();
     if (!text) return;
     input.value = '';
-
-    const adminSender = isAdmin(_currentUser.uid);
-    await db.ref(`messages/${roomId}`).push({
-      senderId: _currentUser.uid,
-      senderName: _userData.username,
-      senderAvatar: _userData.avatar || '👤',
-      text,
-      type: 'text',
-      isAdmin: adminSender,
-      timestamp: firebase.database.ServerValue.TIMESTAMP,
-    });
-
-    // XP for messages (cap 200/day)
-    const snap = await db.ref(`users/${_currentUser.uid}`).once('value');
-    const u = snap.val();
-    const todayKey = new Date().toDateString();
-    const msgXPToday = u.msgXPToday === todayKey ? (u.msgXPCount || 0) : 0;
-    if (msgXPToday < 200) {
-      const newXP = Math.min((u.xp||0)+1, 100*XP_PER_LEVEL);
-      await db.ref(`users/${_currentUser.uid}`).update({
-        xp: newXP, level: getLevelFromXP(newXP),
-        totalMessages: (u.totalMessages||0)+1,
-        msgXPToday: todayKey,
-        msgXPCount: msgXPToday+1,
+    try {
+      await db.ref('messages/' + roomId).push({
+        senderId: _currentUser.uid,
+        senderName: _userData.username,
+        senderAvatar: _userData.avatar || '👤',
+        text, type: 'text',
+        isAdmin: isAdmin(_currentUser.uid),
+        timestamp: firebase.database.ServerValue.TIMESTAMP,
       });
-    } else {
-      await db.ref(`users/${_currentUser.uid}/totalMessages`)
-        .set((u.totalMessages||0)+1);
-    }
+      // XP +1 per message (cap 200/day)
+      const snap = await db.ref('users/' + _currentUser.uid).once('value');
+      const u = snap.val(); if (!u) return;
+      const today = new Date().toDateString();
+      const cnt = u.msgXPToday === today ? (u.msgXPCount || 0) : 0;
+      const updates = { totalMessages: (u.totalMessages || 0) + 1 };
+      if (cnt < 200) {
+        const nx = Math.min((u.xp||0)+1, 100*XP_PER_LEVEL);
+        updates.xp = nx; updates.level = getLevelFromXP(nx);
+        updates.msgXPToday = today; updates.msgXPCount = cnt + 1;
+      }
+      await db.ref('users/' + _currentUser.uid).update(updates);
+    } catch(e) { console.error('sendRoomMsg:', e); }
   }
 
   /* ══════════════════════════════
      PRIVATE CHAT
   ══════════════════════════════ */
   async function openPrivateChat(peerUid, peerData) {
-    _privatePeer = peerUid;
-    _privatePeerData = peerData || {};
-    _chatId = getChatId(_currentUser.uid, peerUid);
     _cleanupPrivate();
+    _peerUid  = peerUid;
+    _chatId   = getChatId(_currentUser.uid, peerUid);
 
-    // If peerData is missing, fetch it
     if (!peerData || !peerData.username) {
-      const snap = await db.ref(`users/${peerUid}`).once('value');
-      _privatePeerData = snap.val() || {};
-    }
+      try {
+        const snap = await db.ref('users/' + peerUid).once('value');
+        _peerData = snap.val() || {};
+      } catch(e) { _peerData = {}; }
+    } else { _peerData = peerData; }
 
     showScreen('screen-private');
 
-    document.getElementById('private-header-name').textContent = _privatePeerData.username || '...';
-    document.getElementById('private-header-avi').textContent = _privatePeerData.avatar || '👤';
+    const hAvi  = document.getElementById('private-header-avi');
+    const hName = document.getElementById('private-header-name');
+    const hStat = document.getElementById('private-header-status');
+    if (hAvi)  hAvi.textContent  = _peerData.avatar   || '👤';
+    if (hName) hName.textContent = _peerData.username  || '...';
+    if (hStat) {
+      hStat.textContent = _peerData.online ? '🟢 متصل الآن' : '⚫ ' + formatLastSeen(_peerData.lastSeen);
+      hStat.style.color = _peerData.online ? 'var(--online)' : 'var(--text-secondary)';
+    }
 
-    _listenPrivateMessages();
-    _bindPrivateInput();
+    _listenPrivateMsgs();
+    _buildPrivateInput();
 
     document.getElementById('btn-private-back').onclick = () => {
       _cleanupPrivate();
@@ -344,117 +294,98 @@ const ChatModule = (() => {
     };
   }
 
-  function _listenPrivateMessages() {
+  function _listenPrivateMsgs() {
     const msgsEl = document.getElementById('private-messages');
+    if (!msgsEl) return;
     msgsEl.innerHTML = '';
-
-    const ref = db.ref(`privateChats/${_chatId}`).orderByChild('timestamp').limitToLast(100);
-    _msgsListener = ref.on('child_added', snap => {
-      const msg = snap.val();
-      if (!msg) return;
+    const ref = db.ref('privateChats/' + _chatId).orderByChild('timestamp').limitToLast(100);
+    _msgListener = ref.on('child_added', snap => {
+      const msg = snap.val(); if (!msg) return;
       const isOwn = msg.senderId === _currentUser.uid;
       const row = document.createElement('div');
       row.className = 'msg-row' + (isOwn ? ' own' : '');
-      row.innerHTML = `
-        <div class="msg-avatar">${sanitize(isOwn ? (_userData.avatar||'👤') : (_privatePeerData.avatar||'👤'))}</div>
-        <div class="msg-content">
-          <div class="msg-bubble">${sanitize(msg.text)}</div>
-          <div class="msg-time">${formatTime(msg.timestamp)}${isOwn && msg.seen ? ' ✔✔' : ''}</div>
-        </div>`;
+      row.innerHTML =
+        '<div class="msg-avatar">' + sanitize(isOwn ? (_userData.avatar||'👤') : (_peerData.avatar||'👤')) + '</div>' +
+        '<div class="msg-content">' +
+          '<div class="msg-bubble">' + sanitize(msg.text) + '</div>' +
+          '<div class="msg-time">' + formatTime(msg.timestamp) + (isOwn && msg.seen ? ' ✔✔' : '') + '</div>' +
+        '</div>';
       msgsEl.appendChild(row);
-      msgsEl.scrollTop = msgsEl.scrollHeight;
-
-      // Mark as seen
-      if (!isOwn && !msg.seen) {
-        db.ref(`privateChats/${_chatId}/${snap.key}/seen`).set(true);
-      }
+      _scrollToBottom(msgsEl);
+      if (!isOwn && !msg.seen) db.ref('privateChats/' + _chatId + '/' + snap.key + '/seen').set(true);
     });
-
-    // Typing indicator listener
-    _typingListener = db.ref(`typing/${_chatId}/${_privatePeer}`).on('value', snap => {
-      document.getElementById('typing-indicator').classList.toggle('hidden', !snap.val());
+    // Typing
+    _typingListener = db.ref('typing/' + _chatId + '/' + _peerUid).on('value', snap => {
+      const el = document.getElementById('typing-indicator');
+      if (el) el.classList.toggle('hidden', !snap.val());
     });
   }
 
-  function _bindPrivateInput() {
-    const input = document.getElementById('private-chat-input');
+  function _buildPrivateInput() {
+    const input   = document.getElementById('private-chat-input');
     const sendBtn = document.getElementById('btn-send-private');
-    const emojiBtn = document.getElementById('btn-emoji-private');
-    const picker = document.getElementById('emoji-picker-private');
+    const emjBtn  = document.getElementById('btn-emoji-private');
+    const picker  = document.getElementById('emoji-picker-private');
+    if (!input || !sendBtn) return;
 
-    let typingTimeout;
+    let typingTimer;
     input.oninput = () => {
-      db.ref(`typing/${_chatId}/${_currentUser.uid}`).set(true);
-      clearTimeout(typingTimeout);
-      typingTimeout = setTimeout(() => {
-        db.ref(`typing/${_chatId}/${_currentUser.uid}`).set(false);
+      db.ref('typing/' + _chatId + '/' + _currentUser.uid).set(true);
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(() => {
+        db.ref('typing/' + _chatId + '/' + _currentUser.uid).set(false);
       }, 2000);
     };
 
     sendBtn.onclick = () => _sendPrivateMsg(input);
     input.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _sendPrivateMsg(input); } };
 
-    emojiBtn.onclick = (e) => {
-      e.stopPropagation();
-      picker.classList.toggle('hidden');
-    };
-
     picker.innerHTML = '';
     EMOJI_LIST.forEach(em => {
-      const span = document.createElement('span');
-      span.textContent = em;
-      span.onclick = () => { input.value += em; input.focus(); };
-      picker.appendChild(span);
+      const s = document.createElement('span'); s.textContent = em;
+      s.onclick = () => { input.value += em; input.focus(); };
+      picker.appendChild(s);
     });
-
+    emjBtn.onclick = e => { e.stopPropagation(); picker.classList.toggle('hidden'); };
     document.addEventListener('click', () => picker.classList.add('hidden'));
   }
 
   async function _sendPrivateMsg(input) {
-    const text = input.value.trim();
+    const text = (input.value || '').trim();
     if (!text) return;
     input.value = '';
-    db.ref(`typing/${_chatId}/${_currentUser.uid}`).set(false);
-
-    await db.ref(`privateChats/${_chatId}`).push({
-      senderId: _currentUser.uid,
-      senderName: _userData.username,
-      text,
-      seen: false,
-      timestamp: firebase.database.ServerValue.TIMESTAMP,
-    });
+    try {
+      db.ref('typing/' + _chatId + '/' + _currentUser.uid).set(false);
+      await db.ref('privateChats/' + _chatId).push({
+        senderId: _currentUser.uid,
+        senderName: _userData.username,
+        text, seen: false,
+        timestamp: firebase.database.ServerValue.TIMESTAMP,
+      });
+    } catch(e) { console.error('sendPrivateMsg:', e); }
   }
 
   /* ── Helpers ── */
-  function _getMyRole(roomId, roomData) {
+  function _getRole(roomId, roomData) {
     if (!roomData) return 'member';
     if (roomData.ownerId === _currentUser.uid) return 'owner';
     if (roomData.admins && roomData.admins[_currentUser.uid]) return 'admin';
     return 'member';
   }
 
-  function _cleanup() {
-    if (_msgsListener) {
-      db.ref(`messages/${_currentRoom}`).off('child_added', _msgsListener);
-      _msgsListener = null;
-    }
-    if (_membersListener) {
-      db.ref(`rooms/${_currentRoom}/usersOnline`).off('value', _membersListener);
-      _membersListener = null;
-    }
-    _emojiOpen = false;
-    _removeCtxMenu();
+  function _cleanupRoom() {
+    if (_msgListener && _roomId) { db.ref('messages/' + _roomId).off('child_added', _msgListener); _msgListener = null; }
+    if (_memberListener && _roomId) { db.ref('rooms/' + _roomId + '/usersOnline').off('value', _memberListener); _memberListener = null; }
+    if (_onlineRef) { _onlineRef.remove(); _onlineRef = null; }
+    document.getElementById('members-panel')?.classList.remove('open');
+    document.getElementById('ctx-menu')?.remove();
   }
 
   function _cleanupPrivate() {
-    if (_msgsListener && _chatId) {
-      db.ref(`privateChats/${_chatId}`).off('child_added', _msgsListener);
-      _msgsListener = null;
-    }
-    if (_typingListener && _chatId) {
-      db.ref(`typing/${_chatId}/${_privatePeer}`).off('value', _typingListener);
-      _typingListener = null;
-      db.ref(`typing/${_chatId}/${_currentUser.uid}`).set(false);
+    if (_msgListener && _chatId) { db.ref('privateChats/' + _chatId).off('child_added', _msgListener); _msgListener = null; }
+    if (_typingListener && _chatId && _peerUid) {
+      db.ref('typing/' + _chatId + '/' + _peerUid).off('value', _typingListener); _typingListener = null;
+      db.ref('typing/' + _chatId + '/' + _currentUser.uid).set(false);
     }
   }
 
