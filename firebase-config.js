@@ -1,16 +1,28 @@
 // 🔥 Firebase Configuration
 // ⚠️ استبدل هذه القيم بقيم مشروعك من Firebase Console
 
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSyCXA1x9fJe6zPFo7yiK1kSRsoR89aSff5k",
-  authDomain: "itchat-web-8c4ed.firebaseapp.com",
-  databaseURL: "https://itchat-web-8c4ed-default-rtdb.firebaseio.com",
-  projectId: "itchat-web-8c4ed",
-  storageBucket: "itchat-web-8c4ed.firebasestorage.app",
-  messagingSenderId: "787261764804",
-  appId: "1:787261764804:web:68cfdba7878669c7dbc591",
-  measurementId: "G-G8S46BLQ0Y"
+  apiKey: "AIzaSyB0k_out0dMDdDrl32WSXNdgUUcnBmynNI",
+  authDomain: "chatroy-ccc7f.firebaseapp.com",
+  databaseURL: "https://chatroy-ccc7f-default-rtdb.firebaseio.com",
+  projectId: "chatroy-ccc7f",
+  storageBucket: "chatroy-ccc7f.firebasestorage.app",
+  messagingSenderId: "248997365308",
+  appId: "1:248997365308:web:9eaffee7dd0a72c9cde539",
+  measurementId: "G-TPS4B8PBZL"
 };
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
 
 // Admin UIDs — أضف UIDs الأدمن هنا
 const ADMIN_UIDS = [
