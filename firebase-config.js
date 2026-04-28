@@ -1,13 +1,8 @@
-// 🔥 Firebase Configuration
-// ⚠️ استبدل هذه القيم بقيم مشروعك من Firebase Console
+// ════════════════════════════════════════
+//  firebase-config.js
+//  ⚠️  استبدل القيم أدناه بقيم مشروعك
+// ════════════════════════════════════════
 
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
   apiKey: "AIzaSyB0k_out0dMDdDrl32WSXNdgUUcnBmynNI",
@@ -20,69 +15,96 @@ const firebaseConfig = {
   measurementId: "G-TPS4B8PBZL"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-
-// Admin UIDs — أضف UIDs الأدمن هنا
+// Admin UIDs — أضف UIDs الأدمن هنا بعد التسجيل
 const ADMIN_UIDS = [
-37KCQRcgyjYPFZdj14uNJpCiKZk2
+  // "paste_uid_here",
 ];
 
-// ─────────────────────────────────────────
-// Safe Firebase init — never throws
-// ─────────────────────────────────────────
+// ════════════════════════════════════════
+//  Safe init — never crashes the page
+// ════════════════════════════════════════
 let auth, db, storage;
 let FIREBASE_READY = false;
 
 (function safeInit() {
   try {
-    const configured = firebaseConfig.apiKey &&
-                       !firebaseConfig.apiKey.startsWith('YOUR_') &&
-                       firebaseConfig.databaseURL &&
-                       !firebaseConfig.databaseURL.includes('YOUR_PROJECT-default');
+    // Check if config values are still placeholders
+    const isPlaceholder =
+      !firebaseConfig.apiKey ||
+       firebaseConfig.apiKey.startsWith('YOUR_') ||
+      !firebaseConfig.databaseURL ||
+       firebaseConfig.databaseURL.includes('YOUR_PROJECT-default');
 
-    if (!configured) {
-      _showSetupBanner();
+    if (isPlaceholder) {
+      console.warn('[ChatVibe] Firebase config not set. Running in UI-only mode.');
+      _showConfigBanner('لم يتم إعداد Firebase بعد — أضف بياناتك في firebase-config.js');
       return;
     }
 
+    // Init Firebase
     firebase.initializeApp(firebaseConfig);
     auth    = firebase.auth();
     db      = firebase.database();
     storage = firebase.storage();
     FIREBASE_READY = true;
-  } catch(err) {
-    console.error('Firebase init failed:', err.message);
-    _showSetupBanner();
+
+    // ── Verify connectivity with a quick ping ──
+    auth.onAuthStateChanged(() => {}); // triggers internal check
+    console.info('[ChatVibe] Firebase initialized ✓');
+
+  } catch (err) {
+    console.error('[ChatVibe] Firebase init error:', err.code, err.message);
+
+    let msg = 'خطأ في تهيئة Firebase: ' + err.message;
+
+    if (err.message && err.message.includes('already exists')) {
+      // App already initialized (hot reload) — reuse existing
+      try {
+        auth    = firebase.auth();
+        db      = firebase.database();
+        storage = firebase.storage();
+        FIREBASE_READY = true;
+        console.info('[ChatVibe] Reused existing Firebase app ✓');
+        return;
+      } catch(e2) { /* fall through */ }
+    }
+
+    if (err.message && (err.message.includes('api-key') || err.message.includes('apiKey'))) {
+      msg = '⚠️ مفتاح API غير صحيح في firebase-config.js';
+    }
+
+    _showConfigBanner(msg);
   }
 })();
 
-function _showSetupBanner() {
-  // Show banner after DOM is ready
-  function _render() {
+/* ── Banner helper ── */
+function _showConfigBanner(msg) {
+  function render() {
+    // Remove existing banner
+    const old = document.getElementById('fb-banner');
+    if (old) old.remove();
+
     const b = document.createElement('div');
-    b.id = 'firebase-banner';
-    b.innerHTML =
-      '<span>⚙️ أضف بيانات Firebase في </span>' +
-      '<code>firebase-config.js</code>' +
-      '<span> لتفعيل تسجيل الدخول</span>';
+    b.id = 'fb-banner';
     b.style.cssText = [
       'position:fixed','top:0','left:0','right:0','z-index:9999',
       'background:linear-gradient(135deg,#7C4DFF,#A040FF)',
-      'color:#fff','font-family:Cairo,sans-serif',
-      'padding:10px 16px','text-align:center',
-      'font-size:13px','font-weight:600',
-      'box-shadow:0 4px 20px rgba(0,0,0,.5)',
+      'color:#fff','font-family:Cairo,Tajawal,sans-serif',
+      'padding:12px 16px','text-align:center',
+      'font-size:13px','font-weight:600','line-height:1.6',
+      'box-shadow:0 4px 24px rgba(0,0,0,.6)',
     ].join(';');
-    b.querySelector('code').style.cssText =
-      'background:rgba(255,255,255,.25);padding:2px 6px;border-radius:4px;font-family:monospace';
+    b.innerHTML =
+      '<div>' + msg + '</div>' +
+      '<div style="font-size:11px;opacity:.85;margin-top:3px">' +
+        'Firebase Console → Authentication → Sign-in method → تفعيل Email/Password' +
+      '</div>';
     document.body.prepend(b);
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', _render);
+    document.addEventListener('DOMContentLoaded', render);
   } else {
-    _render();
+    render();
   }
 }
